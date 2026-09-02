@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RepositoryStatus {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum IngestionStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  conversations Conversation[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("users")
+}
+
+model Repository {
+  id            String           @id @default(uuid())
+  owner         String
+  name          String
+  fullName      String           @unique
+  url           String
+  defaultBranch String           @default("main")
+  description   String?
+  status        RepositoryStatus @default(QUEUED)
+  files         RepositoryFile[]
+  ingestionJobs IngestionJob[]
+  conversations Conversation[]
+  auditLogs     AuditLog[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([owner, name])
+  @@index([status])
+  @@map("repositories")
+}
+
+model RepositoryFile {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  path         String
+  language     String
+  size         Int        @default(0)
+  sha          String?
+  indexedAt    DateTime   @default(now())
+
+  @@unique([repositoryId, path])
+  @@index([repositoryId])
+  @@index([language])
+  @@map("repository_files")
+}
+
+model IngestionJob {
+  id             String          @id @default(uuid())
+  repositoryId   String
+  repository     Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  status         IngestionStatus @default(QUEUED)
+  totalFiles     Int             @default(0)
+  processedFiles Int             @default(0)
+  failedFiles    Int             @default(0)
+  totalChunks    Int             @default(0)
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([repositoryId])
+  @@index([status])
+  @@map("ingestion_jobs")
+}
+
+model Conversation {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages     Message[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([repositoryId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model AuditLog {
+  id           String      @id @default(uuid())
+  repositoryId String?
+  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  action       String
+  details      Json?
+  createdAt    DateTime    @default(now())
+
+  @@index([repositoryId])
+  @@index([action])
+  @@map("audit_logs")
+}
